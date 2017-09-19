@@ -1,0 +1,29 @@
+{
+  "name": "adabru-log",
+  "version": "1.0.0",
+  "description": "UDP log server and web frontend",
+  "main": "cli.js",
+  "bin": {
+    "ablog": "./cli.js"
+  },
+  "scripts": {
+    "install": "lsc -c ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adabru/adabru-log.git"
+  },
+  "keywords": [
+    "log",
+    "frontend"
+  ],
+  "author": "adabru",
+  "license": "Unlicense",
+  "bugs": {
+    "url": "https://github.com/adabru/adabru-log/issues"
+  },
+  "homepage": "https://github.com/adabru/adabru-log#readme",
+  "devDependencies": {
+    "livescript": "^1.5.0"
+  }
+}
