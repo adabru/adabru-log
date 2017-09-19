@@ -2,12 +2,9 @@
   "name": "adabru-log",
   "version": "1.0.0",
   "description": "UDP log server and web frontend",
-  "main": "cli.js",
+  "main": "server.js",
   "bin": {
     "ablog": "./cli.js"
-  },
-  "scripts": {
-    "install": "lsc -c ."
   },
   "repository": {
     "type": "git",
