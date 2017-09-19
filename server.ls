@@ -1,4 +1,4 @@
-require! [dgram,fs,stream]
+require! [net,fs,stream]
 
 
 # configuration
@@ -28,12 +28,11 @@ write_log = (s, f) ->
   switch
     # no log file yet
     case not files[f]?
-      files[f] = date: d, stream: fs.createWriteStream "./log/#{d}-#{f}", flags: 'a'
+      files[f] = logsize: 0, date: d, stream: fs.createWriteStream "./log/#{d}-#{f}", flags: 'a'
     # log file for obsolete month
     case d isnt files[f].date
-      files[f].date = d
       files[f].stream.end!
-      files[f].stream = fs.createWriteStream "./log/#{d}-#{f}", flags: 'a'
+      files[f] = logsize: 0, date: d, stream: fs.createWriteStream "./log/#{d}-#{f}", flags: 'a'
     # log size exceeded
     case files[f].logsize > logsizelimit
       return
@@ -48,20 +47,26 @@ sender_name = {}
 recv_msg = (msg, id) ->
   # each sender must send its (unique) name as first message
   if not sender_name[id]?
-    sender_name[id] = msg
-  else
-    s = msg.toString('utf-8').split('\n').map((line) -> "#{date_timestamp!} #line").join('\n') + '\n'
+    [, sender_name[id], msg] = /(.*?)\n(.*)$/.exec(msg) ? []
+  if msg isnt ''
+    s = JSON.stringify(d:Date.now!, s:msg) + ",\n"
     write_log s, sender_name[id]
+close_con = (id) ->
+  sender_name[id] = undefined
 
 
-# udp server
+# tcp server
 
-server = dgram.createSocket 'udp4'
+server = net.createServer (c) ->
+  c.setEncoding 'utf8'
+  id = "#{c.remoteAddress}:#{c.remotePort}"
+  c.on 'data', (msg) ->
+    recv_msg msg, id
+  c.on 'end', ->
+    close_con id
+    console.log "#id disconnected"
 server.on 'error', (err) ->
-  console.log "server error:\n#{err.stack}"
-  server.close!
-server.on 'message', (msg, rinfo) ->
-  recv_msg msg, "#{rinfo.address}:#{rinfo.port}"
+  throw err
 server.on 'listening', ->
   addr = server.address!
   console.log "log server listening on #{addr.address}:#{addr.port}"
@@ -69,4 +74,4 @@ server.on 'listening', ->
 
 # extern interface
 
-exports <<< start: (port)->server.bind port
+exports <<< start: (port)->server.listen port

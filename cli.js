@@ -12,15 +12,20 @@ usage:
 \x1b[1mablog pipe\x1b[0m name port    pipes stdin to udp port
                                       using name and correct format
 `)
-port = process.argv[2]
-if(isNaN(port))
+a = process.argv
+if(a[2] == "start"){
+  if(isNaN(a[3]))
+    return help()
+}else if(a[2] == "pipe"){
+  if(isNaN(a[4]))
+    return help()
+}else
   return help()
 
 
-switch(process.argv[3]){
-  case "start":
-    require('./server').start(port)
-    break
-  case "pipe":
-    require('./logpipe').start(port)
-}
+// process
+
+if(a[2] == "start")
+  require('./server').start(a[3])
+if(a[2] == "pipe")
+  require('./logpipe').pipe(a[3], a[4])
