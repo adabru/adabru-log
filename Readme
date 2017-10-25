@@ -1,0 +1,146 @@
+[TOC]
+
+# Log
+
+## Requirements
+
+- ✔ tcp server [adabru-log](https://github.com/adabru/adabru-log)
+  - ✔  no log loss
+  - ✔✔ webview
+- ✘ udp server
+  - ✔   logger on different server possible
+  - ✔   logger update possible without process restart
+  - ✔   webview
+  - (✔) central logging
+
+  ```
+  # node js does not support passing udp socket file descriptors to child processes, so using bash
+  # https://github.com/nodejs/help/issues/345#issuecomment-257591541
+  child = child_process.spawn 'bash', ['-c',
+  "(printf #command ; #command #args ; printf \"exit $?\") 2>&1 | cat >/dev/udp/127.0.0.1/7505"
+  ], stdio: 'ignore'
+  ```
+
+  ```
+  #!/usr/bin/env lsc
+
+  require! [dgram,fs,stream]
+
+  pad = (i, n) -> "#{"0".repeat n}#i".substr -n
+  date_logrotate = ->
+    # 2017-07
+    d = new Date!
+    d.getUTCFullYear! + '-' + pad d.getUTCMonth!+1, 2
+  date_timestamp = ->
+    # 2017-07-12 13:45:54
+    d = new Date!
+    [d.getUTCFullYear!, pad(d.getUTCMonth!+1, 2), pad(d.getUTCDate!, 2)].join('-') + ' ' + [pad(d.getUTCHours!, 2), pad(d.getUTCMinutes!, 2), pad(d.getUTCSeconds!, 2)].join(':')
+
+  try fs.mkdirSync './log' catch e then if e.code isnt 'EEXIST' then console.log e ; process.exit -1
+  do ->
+    #~ flushing write stream on process.exit is not yet possible
+    #~ https://github.com/nodejs/node/issues/6980
+    d = f = void
+    w = new stream.Writable do
+      write: (chunk, enc, callback) ->
+        if date_logrotate! isnt d
+          #~ f?.end!
+          if f? then fs.close f, ->
+          d := date_logrotate!
+          #~ f := fs.createWriteStream "./log/#{d}-logger", flags: 'a'
+          f := fs.openSync "./log/#{d}-logger", 'a'
+        #~ f.write "#{date_timestamp!} #{chunk.toString 'utf-8'}", "utf-8", callback
+        fs.writeSync f, "#{date_timestamp!} #{chunk.toString 'utf-8'}", "utf-8"
+        process.nextTick callback
+    process.stdout.write_ = process.stdout.write.bind process.stdout
+    process.stdout.write = process.stderr.write = w.write.bind w
+    process.on 'exit', ->
+      #~ f.end!
+      #~ somehow flush f
+      fs.closeSync f
+    process.on "uncaughtException", (e) ->
+      console.log e.stack
+  <- process.nextTick _
+
+  server = dgram.createSocket 'udp4'
+  # view and set udp receive buffer with
+  # sysctl net.core.rmem_max
+  state = {}
+
+  server.on 'error', (err) ->
+    console.log "server error:\n#{err.stack}"
+    server.close!
+
+  server.on 'message', (msg, rinfo) ->
+    key = "#{rinfo.address}:#{rinfo.port}"
+    d = date_logrotate!
+    # first packet sent must be process name
+    if not state[key]?
+      state[key] = name: msg, date: d
+      state[key].stream = fs.createWriteStream "./log/#{d}-#{state[key].name}", flags: 'a'
+    else
+      # new month started
+      if d isnt state[key].date
+        state[key].date = d
+        state[key].stream.end!
+        state[key].stream = fs.createWriteStream "./log/#{d}-#{state[key].name}", flags: 'a'
+      state[key].stream.write msg.toString('utf-8').split('\n').map((line) -> "#{date_timestamp!} #line").join('\n') + '\n'
+
+  server.on 'listening', ->
+    addr = server.address!
+    console.log "log server listening on #{addr.address}:#{addr.port}"
+
+  server.bind 7505
+  ```
+- ✘ logger per process
+  - ✔ less LOC
+  - ✔ also usable for ci process
+  - ✘ bound to same os environment
+  - ✘ process restart needed for logger update
+  - ✘ process death on logger death?
+
+  ```
+  #!/usr/bin/env lsc
+
+  require! [fs]
+
+  pad = (i, n) -> "#{"0".repeat n}#i".substr -n
+  date_logrotate = ->
+    # 2017-07
+    d = new Date!
+    d.getUTCFullYear! + '-' + pad d.getUTCMonth!+1, 2
+  date_timestamp = ->
+    # 2017-07-12 13:45:54
+    d = new Date!
+    [d.getUTCFullYear!, pad(d.getUTCMonth!+1, 2), pad(d.getUTCDate!, 2)].join('-') + ' ' + [pad(d.getUTCHours!, 2), pad(d.getUTCMinutes!, 2), pad(d.getUTCSeconds!, 2)].join(':')
+
+  try fs.mkdirSync './log' catch e then if e.code isnt 'EEXIST' then process.exit -1
+
+  label = process.argv.2 ? 'log'
+
+  process.stdin.setEncoding 'utf8'
+  d = f = void
+  process.stdin.on 'readable', ->
+    chunk = process.stdin.read!
+    if not chunk? then return
+    dNew = date_logrotate!
+    # new month started
+    if dNew isnt d
+      d := dNew
+      f?.end!
+      f := fs.createWriteStream "./log/#{d}-#{label}", flags: 'a'
+      logsize = fs.statSync("./log/#{d}-#{label}").size
+    if not f.closed
+      if logsize > 10e6
+        f.write "#{date_timestamp!} Max size exceeded\n"
+        return f.close!
+      lines = chunk.toString('utf-8').split('\n')
+      if lines[*-1] is '' then lines.pop!
+      buf = lines.map((line) -> "#{date_timestamp!} #line").join('\n') + '\n'
+      f.write buf
+      logsize += buf.length
+
+
+  process.stdin.on 'end', ->
+    f.end "#{date_timestamp!} exit\n"
+  ```

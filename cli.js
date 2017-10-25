@@ -7,10 +7,10 @@ help = () => console.log(`
 usage:
 
 \x1b[1mablog start\x1b[0m port        starts logging server and
-                                      web frontend
+${ "" }           ${ "" }             web frontend
 
-\x1b[1mablog pipe\x1b[0m name port    pipes stdin to udp port
-                                      using name and correct format
+\x1b[1mablog pipe\x1b[0m name port    pipes stdin to tcp port
+${ "" }          ${ "" }              using name and correct format
 `)
 a = process.argv
 if(a[2] == "start"){

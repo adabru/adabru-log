@@ -24,6 +24,7 @@ date_logrotate = ->
 try fs.mkdirSync './log' catch e then if e.code isnt 'EEXIST' then console.log e ; process.exit -1
 files = {}
 write_log = (s, f) ->
+  console.log "writing log"
   d = date_logrotate!
   switch
     # no log file yet
@@ -39,12 +40,18 @@ write_log = (s, f) ->
     # log file ready
     else
   files[f].stream.write s
-
+close_log = (f) ->
+  console.log "closing log"
+  files[f]?.stream?.end!
+  delete files[f]
+close_all_logs = ->
+  Object.values(files).forEach (f) -> f.stream?.end!
 
 # message processing
 
 sender_name = {}
 recv_msg = (msg, id) ->
+  console.log "received [#{msg}]"
   # each sender must send its (unique) name as first message
   if not sender_name[id]?
     [, sender_name[id], msg] = /(.*?)\n(.*)$/.exec(msg) ? []
@@ -52,7 +59,8 @@ recv_msg = (msg, id) ->
     s = JSON.stringify(d:Date.now!, s:msg) + ",\n"
     write_log s, sender_name[id]
 close_con = (id) ->
-  sender_name[id] = undefined
+  close_log sender_name[id]
+  delete sender_name[id]
 
 
 # tcp server
@@ -71,6 +79,12 @@ server.on 'listening', ->
   addr = server.address!
   console.log "log server listening on #{addr.address}:#{addr.port}"
 
+
+# graceful SIGTERM
+
+process.on 'SIGTERM', ->
+  close_all_logs!
+  process.nextTick process.exit
 
 # extern interface
 
