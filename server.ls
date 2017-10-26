@@ -1,4 +1,4 @@
-require! [net,fs,stream]
+require! [net,fs,stream,http,util]
 
 
 # configuration
@@ -47,6 +47,7 @@ close_log = (f) ->
 close_all_logs = ->
   Object.values(files).forEach (f) -> f.stream?.end!
 
+
 # message processing
 
 sender_name = {}
@@ -65,7 +66,7 @@ close_con = (id) ->
 
 # tcp server
 
-server = net.createServer (c) ->
+tcp_server = net.createServer (c) ->
   c.setEncoding 'utf8'
   id = "#{c.remoteAddress}:#{c.remotePort}"
   c.on 'data', (msg) ->
@@ -73,11 +74,49 @@ server = net.createServer (c) ->
   c.on 'end', ->
     close_con id
     console.log "#id disconnected"
-server.on 'error', (err) ->
+tcp_server.on 'error', (err) ->
   throw err
-server.on 'listening', ->
-  addr = server.address!
-  console.log "log server listening on #{addr.address}:#{addr.port}"
+tcp_server.on 'listening', ->
+  addr = tcp_server.address!
+  console.log "log tcp-server listening on #{addr.address}:#{addr.port}"
+
+
+# http server
+
+http_server = http.createServer (req, res) ->
+  answer = (code, message) -> res.writeHead code ; res.end message
+  switch
+    case req.url is "/"
+      # get all names and sizes of log files
+      (e,files) <- fs.readdir './log', _
+      Promise.all(
+        files.map (f) -> new Promise (y,n) -> fs.stat "./log/#f", (e,s) ->
+          if e? then n e else y {name: /[^-]*$/.exec(f).0, s.size, mtime:s.mtimeMs}
+      ).catch(
+        (e) -> console.log e ; answer 500, e.stack
+      ).then (files) ->
+        logs = {}
+        for f in files
+          logs[f.name] ?= {f.name, size:0, mtime:0}
+          logs[f.name].size += f.size
+          logs[f.name].mtime >?= f.mtime
+        answer 200, JSON.stringify Object.values(logs).map (l) -> l <<< active: l.name in Object.values sender_name
+    else
+      # concat logs of one process
+      name = /[^\/]+$/.exec(req.url).0
+      (e,files) <- fs.readdir './log', _
+      files = files.filter (f) -> f.endsWith "-#{name}"
+      if files.length is 0
+        return answer 404, "no logs for process #name yet"
+      Promise.all(
+        files.map (f) -> (util.promisify fs.readFile) "./log/#f", "utf-8"
+      ).catch(
+        (e) -> console.log e ; answer 500, e.stack
+      ).then (ds) ->
+        answer 200, "[#{ds.join '\n'}{}]"
+http_server.on "listening", ->
+  addr = http_server.address!
+  console.log "log http-server listening on #{addr.address}:#{addr.port}"
 
 
 # graceful SIGTERM
@@ -86,6 +125,7 @@ process.on 'SIGTERM', ->
   close_all_logs!
   process.nextTick process.exit
 
+
 # extern interface
 
-exports <<< start: (port)->server.listen port
+exports <<< start: (tcpport, httpport) -> tcp_server.listen tcpport ; http_server.listen httpport, "::1"

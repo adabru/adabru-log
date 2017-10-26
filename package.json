@@ -1,7 +1,7 @@
 {
   "name": "adabru-log",
   "version": "1.0.0",
-  "description": "UDP log server and web frontend",
+  "description": "tcp log server and http json backend",
   "main": "server.js",
   "bin": {
     "ablog": "./cli.js"

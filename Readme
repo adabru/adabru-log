@@ -144,3 +144,23 @@
   process.stdin.on 'end', ->
     f.end "#{date_timestamp!} exit\n"
   ```
+
+## API
+
+| cli
+|`ablog`|help
+|`ablog start [tcp-port] [http-port]`|start server
+|`ablog pipe [name] [port]`|pipe stdin to log-server
+
+| tcp port
+| first message `[name, msg] = /(.*?)\n(.*)$/.exec(msg)`
+| further messages `msg`
+
+| http port
+|`GET /`|`[{name, size, active}, …]`
+|`GET /name`|`[{d,m}, _]`
+
+## Debugging
+
+- └▪nc -6 ::1 4567↵
+- └▪curl [::1]:1234/↵
